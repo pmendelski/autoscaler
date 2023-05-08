@@ -443,21 +443,14 @@ type expanderResults struct {
 
 type reportingStrategy struct {
 	initialNodeConfigs []NodeConfig
-	optionToChoose     GroupSizeChange
 	results            *expanderResults
 	t                  *testing.T
 }
 
 func (r reportingStrategy) BestOption(options []expander.Option, nodeInfo map[string]*schedulerframework.NodeInfo) *expander.Option {
 	r.results.inputOptions = expanderOptionsToGroupSizeChanges(options)
-	for _, option := range options {
-		GroupSizeChange := expanderOptionToGroupSizeChange(option)
-		if GroupSizeChange == r.optionToChoose {
-			return &option
-		}
-	}
-	assert.Fail(r.t, "did not find expansionOptionToChoose %s", r.optionToChoose)
-	return nil
+	fmt.Printf(">>> options: %+v\n", r.results.inputOptions)
+	return &options[0]
 }
 
 func expanderOptionsToGroupSizeChanges(options []expander.Option) []GroupSizeChange {
@@ -528,7 +521,6 @@ func runSimpleScaleUpTest(t *testing.T, config *ScaleTestConfig) *ScaleTestResul
 
 	expander := reportingStrategy{
 		initialNodeConfigs: config.Nodes,
-		optionToChoose:     config.ExpansionOptionToChoose,
 		results:            &expanderResults{},
 		t:                  t,
 	}

@@ -31,13 +31,15 @@ import (
 	resourceapi "k8s.io/api/resource/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/kubernetes/pkg/controller/daemon"
+
 	"k8s.io/autoscaler/cluster-autoscaler/config"
 	drautils "k8s.io/autoscaler/cluster-autoscaler/simulator/dynamicresources/utils"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/framework"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
+	"k8s.io/autoscaler/cluster-autoscaler/utils/labels"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/taints"
 	. "k8s.io/autoscaler/cluster-autoscaler/utils/test"
-	"k8s.io/kubernetes/pkg/controller/daemon"
 )
 
 var (
@@ -69,7 +71,14 @@ var (
 			},
 		},
 	}
-	testDaemonSets = []*appsv1.DaemonSet{ds1, ds2, ds3}
+	ds4 = &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ds4",
+			Namespace: "ds4-namespace",
+			UID:       types.UID("ds4"),
+		},
+	}
+	testDaemonSets = []*appsv1.DaemonSet{ds1, ds2, ds3, ds4}
 )
 
 func TestSanitizedTemplateNodeInfoFromNodeGroup(t *testing.T) {
@@ -211,6 +220,18 @@ func TestSanitizedTemplateNodeInfoFromNodeInfo(t *testing.T) {
 			},
 		},
 		{
+			name: "node with DS pods [forceDS=false, some daemon sets, system-node-critical]",
+			pods: []*apiv1.Pod{
+				buildDSPod(ds1, "n"),
+				setDeletionTimestamp(setPreemptingSystemNodeCritical(buildDSPod(ds2, "n"))),
+			},
+			daemonSets: testDaemonSets,
+			wantPods: []*apiv1.Pod{
+				buildDSPod(ds1, "n"),
+				buildDSPod(ds2, "n"),
+			},
+		},
+		{
 			name: "node with a DS pod [forceDS=true, no daemon sets]",
 			pods: []*apiv1.Pod{
 				buildDSPod(ds1, "n"),
@@ -243,11 +264,13 @@ func TestSanitizedTemplateNodeInfoFromNodeInfo(t *testing.T) {
 				setDeletionTimestamp(SetMirrorPodSpec(BuildScheduledTestPod("p4", 100, 1, "n"))),
 				buildDSPod(ds1, "n"),
 				setDeletionTimestamp(buildDSPod(ds2, "n")),
+				setDeletionTimestamp(setPreemptingSystemNodeCritical(buildDSPod(ds2, "n"))),
 			},
 			daemonSets: testDaemonSets,
 			wantPods: []*apiv1.Pod{
 				SetMirrorPodSpec(BuildScheduledTestPod("p3", 100, 1, "n")),
 				buildDSPod(ds1, "n"),
+				buildDSPod(ds4, "n"),
 			},
 		},
 		{
@@ -259,6 +282,7 @@ func TestSanitizedTemplateNodeInfoFromNodeInfo(t *testing.T) {
 				setDeletionTimestamp(SetMirrorPodSpec(BuildScheduledTestPod("p4", 100, 1, "n"))),
 				buildDSPod(ds1, "n"),
 				setDeletionTimestamp(buildDSPod(ds2, "n")),
+				setDeletionTimestamp(setPreemptingSystemNodeCritical(buildDSPod(ds2, "n"))),
 			},
 			daemonSets: testDaemonSets,
 			forceDS:    true,
@@ -266,6 +290,7 @@ func TestSanitizedTemplateNodeInfoFromNodeInfo(t *testing.T) {
 				SetMirrorPodSpec(BuildScheduledTestPod("p3", 100, 1, "n")),
 				buildDSPod(ds1, "n"),
 				buildDSPod(ds2, "n"),
+				buildDSPod(ds4, "n"),
 			},
 		},
 	}
@@ -684,6 +709,12 @@ func buildDSPod(ds *appsv1.DaemonSet, nodeName string) *apiv1.Pod {
 func setDeletionTimestamp(pod *apiv1.Pod) *apiv1.Pod {
 	now := metav1.NewTime(time.Now())
 	pod.DeletionTimestamp = &now
+	return pod
+}
+
+func setPreemptingSystemNodeCritical(pod *apiv1.Pod) *apiv1.Pod {
+	*pod.Spec.PreemptionPolicy = apiv1.PreemptLowerPriority
+	pod.Spec.PriorityClassName = labels.SystemNodeCriticalLabel
 	return pod
 }
 

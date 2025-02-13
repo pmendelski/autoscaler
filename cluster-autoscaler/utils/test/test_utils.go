@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/autoscaler/cluster-autoscaler/utils/taints"
 	kube_types "k8s.io/kubernetes/pkg/kubelet/types"
 )
 
@@ -391,6 +392,15 @@ func RemoveNodeNotReadyTaint(node *apiv1.Node) {
 		final = append(final, node.Spec.Taints[i])
 	}
 	node.Spec.Taints = final
+}
+
+// SetToBeDeletedTaint sets node ToBeDeletedByClusterAutoscaler taint
+func SetToBeDeletedTaint(node *apiv1.Node) {
+	node.Spec.Taints = append(node.Spec.Taints, apiv1.Taint{
+		Key:    taints.ToBeDeletedTaint,
+		Value:  fmt.Sprint(time.Now().Unix()),
+		Effect: apiv1.TaintEffectNoSchedule,
+	})
 }
 
 // SetNodeCondition sets node condition.

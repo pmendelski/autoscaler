@@ -50,6 +50,11 @@ func TestGetNodeInfosForGroups(t *testing.T) {
 	SetNodeReadyState(unready4, false, now)
 	justReady5 := BuildTestNode("n5", 5000, 5000)
 	SetNodeReadyState(justReady5, true, now)
+	readyToBeDeleted6 := BuildTestNode("n6", 2000, 2000)
+	SetNodeReadyState(readyToBeDeleted6, true, now.Add(-2*time.Minute))
+	SetToBeDeletedTaint(readyToBeDeleted6)
+	ready7 := BuildTestNode("n7", 6000, 6000)
+	SetNodeReadyState(ready7, true, now.Add(-2*time.Minute))
 
 	tn := BuildTestNode("tn", 5000, 5000)
 	tni := framework.NewTestNodeInfo(tn)
@@ -68,10 +73,13 @@ func TestGetNodeInfosForGroups(t *testing.T) {
 	provider1.AddNodeGroup("ng4", 0, 1000, 0) // Nodegroup without nodes.
 	provider1.AddNodeGroup("ng5", 1, 10, 1)   // Nodegroup with node that recently became ready.
 	provider1.AddNode("ng5", justReady5)
+	provider1.AddNodeGroup("ng6", 1, 10, 1) // Nodegroup with to be deleted node
+	provider1.AddNode("ng6", readyToBeDeleted6)
+	provider1.AddNode("ng6", ready7)
 
 	// Cloud provider with TemplateNodeInfo not implemented.
 	provider2 := testprovider.NewTestAutoprovisioningCloudProvider(nil, nil, nil, nil, nil, nil)
-	provider2.AddNodeGroup("ng6", 1, 10, 1) // Nodegroup without nodes.
+	provider2.AddNodeGroup("ng7", 1, 10, 1) // Nodegroup without nodes.
 
 	podLister := kube_util.NewTestPodLister([]*apiv1.Pod{})
 	registry := kube_util.NewListerRegistry(nil, nil, podLister, nil, nil, nil, nil, nil, nil)
@@ -106,6 +114,9 @@ func TestGetNodeInfosForGroups(t *testing.T) {
 	info, found = res["ng5"]
 	assert.True(t, found)
 	assertEqualNodeCapacities(t, tn, info.Node())
+	info, found = res["ng6"]
+	assert.True(t, found)
+	assertEqualNodeCapacities(t, ready7, info.Node())
 
 	// Test for a nodegroup without nodes and TemplateNodeInfo not implemented by cloud proivder
 	ctx = context.AutoscalingContext{
@@ -158,6 +169,9 @@ func TestGetNodeInfosForGroupsCache(t *testing.T) {
 	provider1.AddNode("ng3", ready5)
 	provider1.AddNodeGroup("ng4", 0, 1000, 0) // Nodegroup without nodes (and 1 previously ready node).
 	provider1.AddNode("ng4", ready6)
+	provider1.AddNodeGroup("ng5", 1, 10, 1) // Nodegroup with ready and to be deleted node.
+	provider1.AddNode("ng5", readyToBeDeleted7)
+	provider1.AddNode("ng5", ready8)
 
 	podLister := kube_util.NewTestPodLister([]*apiv1.Pod{})
 	registry := kube_util.NewListerRegistry(nil, nil, podLister, nil, nil, nil, nil, nil, nil)
@@ -192,6 +206,9 @@ func TestGetNodeInfosForGroupsCache(t *testing.T) {
 	info, found = res["ng4"]
 	assert.True(t, found)
 	assertEqualNodeCapacities(t, tn, info.Node())
+	info, found = res["ng5"]
+	assert.True(t, found)
+	assertEqualNodeCapacities(t, tn, info.Node())
 	// Check cache
 	cachedInfo, found := niProcessor.nodeInfoCache["ng1"]
 	assert.True(t, found)
@@ -203,6 +220,9 @@ func TestGetNodeInfosForGroupsCache(t *testing.T) {
 	assert.False(t, found)
 	cachedInfo, found = niProcessor.nodeInfoCache["ng4"]
 	assert.False(t, found)
+	cachedInfo, found = niProcessor.nodeInfoCache["ng5"]
+	assert.True(t, found)
+	assertEqualNodeCapacities(t, ready8, cachedInfo.Node())
 
 	// Invalidate part of cache in two different ways
 	provider1.DeleteNodeGroup("ng1")
